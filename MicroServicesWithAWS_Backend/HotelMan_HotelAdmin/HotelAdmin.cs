@@ -1,11 +1,13 @@
 ﻿using Amazon.Lambda.APIGatewayEvents;
 using Amazon.Lambda.Core;
+using Amazon.S3;
 using HttpMultipartParser;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
+using Amazon.S3.Model;
 
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
 
@@ -13,7 +15,7 @@ namespace HotelMan_HotelAdmin
 {
     public class HotelAdmin
     {
-        public APIGatewayProxyResponse AddHotel(APIGatewayProxyRequest request, ILambdaContext context)
+        public async Task<APIGatewayProxyResponse> AddHotel(APIGatewayProxyRequest request, ILambdaContext context)
         {
             var response = new APIGatewayProxyResponse()
             {
@@ -42,6 +44,10 @@ namespace HotelMan_HotelAdmin
             var fileName = file.FileName;
             //file.Data - use this when you want to store somewhere
 
+            await using var fileContentStream = new MemoryStream();
+            await file.Data.CopyToAsync(fileContentStream);
+            fileContentStream.Position = 0;
+
             var userId = formData.GetParameterValue(name: "userId");
             var idToken = formData.GetParameterValue(name: "idToken");
 
@@ -54,6 +60,20 @@ namespace HotelMan_HotelAdmin
                 response.Body = JsonSerializer.Serialize(new { Error = "Unauthorized. Must be a member of Admin group" });
 
             }
+
+            //s3 configure
+            var region = Environment.GetEnvironmentVariable("AWS_REGION");
+            var bucketName = Environment.GetEnvironmentVariable("bucketName");
+
+            var client = new AmazonS3Client(Amazon.RegionEndpoint.GetBySystemName(region));
+            await client.PutObjectAsync(new PutObjectRequest
+            {
+                BucketName = bucketName,
+                Key = fileName,
+                InputStream = fileContentStream,
+                AutoCloseStream = true
+            });
+
 
             //request.Headers["Authorization"]
             Console.WriteLine("OK=> ", response);

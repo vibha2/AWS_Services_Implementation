@@ -8,6 +8,9 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Amazon.S3.Model;
+using HotelMan_HotelAdmin.Models;
+using Amazon.DynamoDBv2.DataModel;
+using Amazon.DynamoDBv2;
 
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
 
@@ -66,14 +69,40 @@ namespace HotelMan_HotelAdmin
             var bucketName = Environment.GetEnvironmentVariable("bucketName");
 
             var client = new AmazonS3Client(Amazon.RegionEndpoint.GetBySystemName(region));
-            await client.PutObjectAsync(new PutObjectRequest
-            {
-                BucketName = bucketName,
-                Key = fileName,
-                InputStream = fileContentStream,
-                AutoCloseStream = true
-            });
+            var dbClient = new AmazonDynamoDBClient(Amazon.RegionEndpoint.GetBySystemName(region));
 
+            try
+            {
+                //push the object to s3 bucket
+                await client.PutObjectAsync(new PutObjectRequest
+                {
+                    BucketName = bucketName,
+                    Key = fileName,
+                    InputStream = fileContentStream,
+                    AutoCloseStream = true
+                });
+
+                //add sdk of dynamodb
+
+                var hotel = new Hotel
+                {
+                    UserId = userId,
+                    Id = Guid.NewGuid().ToString(),
+                    Name = hotelName,
+                    CityName = hotelCity,
+                    Price = hotelPrice,
+                    Rating = hotelRating,
+                    FileName = fileName
+                };
+
+                using var dbContext = new DynamoDBContext(dbClient);
+                await dbContext.SaveAsync(hotel);
+            }
+            catch(Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
 
             //request.Headers["Authorization"]
             Console.WriteLine("OK=> ", response);
